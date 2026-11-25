@@ -1,0 +1,36 @@
+# ==============================================================================
+# Copia este archivo como "terraform.tfvars" y rellena tus valores reales.
+# NUNCA subas "terraform.tfvars" a GitHub (está bloqueado en .gitignore).
+# ==============================================================================
+
+# Infraestructura AWS
+project_name        = "aguafix"
+aws_region          = "us-east-1"
+instance_type       = "t3.micro"
+ssh_public_key_path = "./aguafix-key.pem.pub"
+s3_bucket_name      = "aguafix-imagenes-cambia-este-nombre-unico"
+compose_dir         = "/home/ubuntu/aguafix"
+docker_image        = "deborahvp/aguafix-api:latest"
+
+# No-IP (coordinar con Persona 3)
+noip_hostname = "aguafix-equipo.ddns.net"
+noip_username = "tu_usuario_noip"
+noip_password = "tu_password_o_ddns_key_noip"
+
+# Base de datos PostgreSQL
+db_name     = "aguafix_db"
+db_user     = "postgres"
+db_password = "cambia_esta_password_segura"
+
+# Correo SMTP
+mail_host         = "smtp.gmail.com"
+mail_port         = 587
+mail_user         = "tu_correo@gmail.com"
+mail_password     = "tu_app_password_gmail"
+mail_from         = "tu_correo@gmail.com"
+maintenance_email = "mantenimiento@municipio.gov.mx"
+
+# JWT y credenciales AWS para la API (subida de imágenes a S3)
+jwt_secret            = "cambia_este_jwt_secret_largo_y_seguro"
+aws_access_key_id     = "AKIA_TU_ACCESS_KEY_ID"
+aws_secret_access_key = "TU_SECRET_ACCESS_KEY"

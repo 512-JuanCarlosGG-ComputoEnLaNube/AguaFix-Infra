@@ -1,0 +1,28 @@
+# Directorios y archivos internos de Terraform
+.terraform/
+.terraform.lock.hcl
+
+# Archivos de estado (contienen datos sensibles de la infraestructura)
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Variables reales con secretos (NUNCA subir a GitHub)
+terraform.tfvars
+*.tfvars
+!terraform.tfvars.example
+
+# Llaves SSH privadas y variables de entorno
+*.pem
+*.key
+.env
+.env.*
+
+# Archivos temporales y del sistema
+*.bak
+.DS_Store
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
