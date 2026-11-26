@@ -1,20 +1,58 @@
 #!/bin/bash
 # ==============================================================================
-# PLACEHOLDER TEMPORAL (Persona 2)
-# Persona 3 reemplazará este archivo con el aprovisionamiento real:
-#   - Instalar Docker y Docker Compose
-#   - Obtener IP pública y actualizar No-IP
-#   - Crear ${compose_dir}/compose.yaml y ${compose_dir}/.env
-#   - Ejecutar: docker compose up -d
-#
-# Variables disponibles inyectadas desde ec2.tf (templatefile):
-#   compose_dir, docker_image, noip_hostname, noip_username, noip_password,
-#   db_name, db_user, db_password, mail_host, mail_port, mail_user,
-#   mail_password, mail_from, maintenance_email, jwt_secret, aws_region,
-#   aws_s3_bucket, aws_access_key_id, aws_secret_access_key
+# Aprovisionamiento automático de instancia EC2 para AguaFix (Ubuntu 24.04)
 # ==============================================================================
+set -euo pipefail
 
-set -e
-mkdir -p "${compose_dir}"
-chown -R ubuntu:ubuntu "${compose_dir}"
-echo "Instancia inicializada correctamente. Bucket S3: ${aws_s3_bucket}" > "${compose_dir}/init.log"
+export DEBIAN_FRONTEND=noninteractive
+LOG_FILE="/var/log/aguafix-user-data.log"
+COMPOSE_DIR="${compose_dir}"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+log() {
+  echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] $*"
+}
+
+log "Iniciando aprovisionamiento de AguaFix en Ubuntu 24.04..."
+
+# ------------------------------------------------------------------------------
+# 1. Instalar Docker Engine y Docker Compose plugin (repositorio oficial Docker)
+# ------------------------------------------------------------------------------
+log "Instalando dependencias base y repositorio oficial de Docker..."
+apt-get -o DPkg::Lock::Timeout=120 update -y
+apt-get -o DPkg::Lock::Timeout=120 install -y --no-install-recommends \
+  ca-certificates \
+  curl \
+  gnupg
+
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
+
+ARCH=$(dpkg --print-architecture)
+CODENAME=$(. /etc/os-release && echo "$${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+
+echo "deb [arch=$ARCH signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $CODENAME stable" \
+  > /etc/apt/sources.list.d/docker.list
+
+apt-get -o DPkg::Lock::Timeout=120 update -y
+apt-get -o DPkg::Lock::Timeout=120 install -y --no-install-recommends \
+  docker-ce \
+  docker-ce-cli \
+  containerd.io \
+  docker-buildx-plugin \
+  docker-compose-plugin
+
+systemctl enable --now docker
+
+# Permitir que el usuario ubuntu ejecute docker y docker compose sin sudo (CI/CD SSH)
+usermod -aG docker ubuntu
+
+log "Docker instalado: $(docker --version)"
+log "Docker Compose instalado: $(docker compose version)"
+
+# Preparar directorio base del proyecto
+mkdir -p "$COMPOSE_DIR"
+chown -R ubuntu:ubuntu "$COMPOSE_DIR"
+echo "Docker aprovisionado correctamente. Bucket S3: ${aws_s3_bucket}" > "$COMPOSE_DIR/init.log"
