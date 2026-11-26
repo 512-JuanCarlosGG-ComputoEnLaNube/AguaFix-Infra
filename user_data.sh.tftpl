@@ -110,7 +110,89 @@ case "$NOIP_RESPONSE" in
     ;;
 esac
 
-# Preparar directorio base del proyecto
+# ------------------------------------------------------------------------------
+# 4. Generar archivo de variables de entorno (.env)
+# ------------------------------------------------------------------------------
+log "Generando directorio $COMPOSE_DIR y archivo .env..."
 mkdir -p "$COMPOSE_DIR"
+
+cat <<'EOF' > "$COMPOSE_DIR/.env"
+# Database
+DB_HOST=postgres
+DB_PORT=5432
+DB_NAME=${db_name}
+DB_USER=${db_user}
+DB_PASSWORD=${db_password}
+
+# Email (SMTP)
+MAIL_HOST=${mail_host}
+MAIL_PORT=${mail_port}
+MAIL_USER=${mail_user}
+MAIL_PASSWORD=${mail_password}
+MAIL_FROM=${mail_from}
+MAINTENANCE_EMAIL=${maintenance_email}
+
+# JWT
+JWT_SECRET=${jwt_secret}
+
+# App (puerto interno del contenedor; compose.yaml publica 80:3000)
+PORT=3000
+NODE_ENV=production
+
+# AWS S3
+AWS_REGION=${aws_region}
+AWS_S3_BUCKET=${aws_s3_bucket}
+AWS_ACCESS_KEY_ID=${aws_access_key_id}
+AWS_SECRET_ACCESS_KEY=${aws_secret_access_key}
+EOF
+
+chmod 600 "$COMPOSE_DIR/.env"
+
+# ------------------------------------------------------------------------------
+# 5. Generar compose.yaml (PostgreSQL 16 + AguaFix API en 80:3000)
+# ------------------------------------------------------------------------------
+log "Generando $COMPOSE_DIR/compose.yaml..."
+
+cat <<'EOF' > "$COMPOSE_DIR/compose.yaml"
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aguafix_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: $${DB_NAME}
+      POSTGRES_USER: $${DB_USER}
+      POSTGRES_PASSWORD: $${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    image: ${docker_image}
+    container_name: aguafix_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      PORT: "3000"
+      NODE_ENV: production
+    ports:
+      - "80:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+EOF
+
 chown -R ubuntu:ubuntu "$COMPOSE_DIR"
-echo "Docker y No-IP (${noip_hostname} -> $PUBLIC_IP) aprovisionados. Bucket S3: ${aws_s3_bucket}" > "$COMPOSE_DIR/init.log"
+chmod 600 "$COMPOSE_DIR/.env"
+echo "Archivos .env y compose.yaml generados (${noip_hostname} -> $PUBLIC_IP). Bucket S3: ${aws_s3_bucket}" > "$COMPOSE_DIR/init.log"
