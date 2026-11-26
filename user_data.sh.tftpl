@@ -120,30 +120,30 @@ cat <<'EOF' > "$COMPOSE_DIR/.env"
 # Database
 DB_HOST=postgres
 DB_PORT=5432
-DB_NAME=${db_name}
-DB_USER=${db_user}
-DB_PASSWORD=${db_password}
+DB_NAME='${db_name}'
+DB_USER='${db_user}'
+DB_PASSWORD='${db_password}'
 
 # Email (SMTP)
-MAIL_HOST=${mail_host}
+MAIL_HOST='${mail_host}'
 MAIL_PORT=${mail_port}
-MAIL_USER=${mail_user}
-MAIL_PASSWORD=${mail_password}
-MAIL_FROM=${mail_from}
-MAINTENANCE_EMAIL=${maintenance_email}
+MAIL_USER='${mail_user}'
+MAIL_PASSWORD='${mail_password}'
+MAIL_FROM='${mail_from}'
+MAINTENANCE_EMAIL='${maintenance_email}'
 
 # JWT
-JWT_SECRET=${jwt_secret}
+JWT_SECRET='${jwt_secret}'
 
 # App (puerto interno del contenedor; compose.yaml publica 80:3000)
 PORT=3000
 NODE_ENV=production
 
 # AWS S3
-AWS_REGION=${aws_region}
-AWS_S3_BUCKET=${aws_s3_bucket}
-AWS_ACCESS_KEY_ID=${aws_access_key_id}
-AWS_SECRET_ACCESS_KEY=${aws_secret_access_key}
+AWS_REGION='${aws_region}'
+AWS_S3_BUCKET='${aws_s3_bucket}'
+AWS_ACCESS_KEY_ID='${aws_access_key_id}'
+AWS_SECRET_ACCESS_KEY='${aws_secret_access_key}'
 EOF
 
 chmod 600 "$COMPOSE_DIR/.env"
@@ -193,6 +193,47 @@ volumes:
   postgres_data:
 EOF
 
+# ------------------------------------------------------------------------------
+# 6. Ajustar permisos, levantar contenedores y verificar arranque de la API
+# ------------------------------------------------------------------------------
+log "Ajustando permisos de $COMPOSE_DIR y levantando contenedores..."
 chown -R ubuntu:ubuntu "$COMPOSE_DIR"
 chmod 600 "$COMPOSE_DIR/.env"
-echo "Archivos .env y compose.yaml generados (${noip_hostname} -> $PUBLIC_IP). Bucket S3: ${aws_s3_bucket}" > "$COMPOSE_DIR/init.log"
+
+cd "$COMPOSE_DIR"
+docker compose pull
+docker compose up -d
+
+log "Esperando a que la API responda en http://127.0.0.1/..."
+HEALTH_OK=false
+for attempt in $(seq 1 24); do
+  if curl -fsS http://127.0.0.1/ > /dev/null 2>&1; then
+    HEALTH_OK=true
+    break
+  fi
+  log "API aún iniciando (intento $attempt/24)..."
+  sleep 5
+done
+
+if [ "$HEALTH_OK" = true ]; then
+  log "AguaFix API en línea y respondiendo en http://${noip_hostname}/ (IP: $PUBLIC_IP)."
+  cat <<EOF > "$COMPOSE_DIR/init.log"
+status=ok
+timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+public_ip=$PUBLIC_IP
+hostname=${noip_hostname}
+s3_bucket=${aws_s3_bucket}
+EOF
+  chown ubuntu:ubuntu "$COMPOSE_DIR/init.log"
+else
+  log "ADVERTENCIA: La API no respondió dentro del tiempo esperado. Revisa: cd $COMPOSE_DIR && docker compose logs"
+  cat <<EOF > "$COMPOSE_DIR/init.log"
+status=degraded
+timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+public_ip=$PUBLIC_IP
+hostname=${noip_hostname}
+s3_bucket=${aws_s3_bucket}
+EOF
+  chown ubuntu:ubuntu "$COMPOSE_DIR/init.log"
+  exit 1
+fi
