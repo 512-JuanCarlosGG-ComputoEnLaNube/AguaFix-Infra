@@ -45,7 +45,7 @@ No necesitas tocar `ec2.tf` ni `variables.tf` — puedes usar directamente estas
    PUBLIC_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4)
    ```
 3. **Actualizar No-IP** con `curl` usando `${noip_username}`, `${noip_password}`, `${noip_hostname}` y `$PUBLIC_IP`.
-4. **Generar `${compose_dir}/.env`** con todas las variables de BD, SMTP, JWT y AWS S3 (`AWS_S3_BUCKET=${aws_s3_bucket}`, `PORT=80`, `NODE_ENV=production`, etc.).
+4. **Generar `${compose_dir}/.env`** con todas las variables de BD, SMTP, JWT y AWS S3 (`AWS_S3_BUCKET=${aws_s3_bucket}`, `PORT=3000` como puerto interno del contenedor porque `compose.yaml` expone `80:3000`, `NODE_ENV=production`, etc.).
 5. **Generar `${compose_dir}/compose.yaml`** con:
    - Servicio `postgres` (`postgres:16-alpine` con volumen persistente y healthcheck).
    - Servicio `api` (`${docker_image}`, `env_file: [.env]`, `DB_HOST: postgres`, `ports: ["80:3000"]`, `depends_on: postgres (service_healthy)`).
