@@ -52,7 +52,65 @@ usermod -aG docker ubuntu
 log "Docker instalado: $(docker --version)"
 log "Docker Compose instalado: $(docker compose version)"
 
+# ------------------------------------------------------------------------------
+# 2. Obtener IP pública de la instancia EC2 mediante IMDSv2
+# ------------------------------------------------------------------------------
+log "Obteniendo IP pública de la instancia mediante IMDSv2..."
+IMDS_TOKEN=""
+PUBLIC_IP=""
+
+for attempt in 1 2 3 4 5; do
+  IMDS_TOKEN=$(curl -fsS -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" || true)
+  if [ -n "$IMDS_TOKEN" ]; then
+    PUBLIC_IP=$(curl -fsS -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" \
+      "http://169.254.169.254/latest/meta-data/public-ipv4" || true)
+  fi
+  if [ -n "$PUBLIC_IP" ]; then
+    break
+  fi
+  log "Reintentando lectura de IP pública (intento $attempt/5)..."
+  sleep 3
+done
+
+if [ -z "$PUBLIC_IP" ]; then
+  log "ERROR: No se pudo obtener la IP pública desde IMDSv2."
+  exit 1
+fi
+
+log "IP pública detectada: $PUBLIC_IP"
+
+# ------------------------------------------------------------------------------
+# 3. Actualizar registro dinámico en No-IP
+# ------------------------------------------------------------------------------
+log "Actualizando hostname de No-IP (${noip_hostname}) -> $PUBLIC_IP..."
+
+IFS= read -r NOIP_USER <<'NOIP_USER_EOF'
+${noip_username}
+NOIP_USER_EOF
+
+IFS= read -r NOIP_PASS <<'NOIP_PASS_EOF'
+${noip_password}
+NOIP_PASS_EOF
+
+NOIP_RESPONSE=$(curl -fsS --retry 3 --retry-delay 5 \
+  -A "AguaFix-EC2-Provisioner/1.0" \
+  -u "$NOIP_USER:$NOIP_PASS" \
+  "https://dynupdate.no-ip.com/nic/update?hostname=${noip_hostname}&myip=$PUBLIC_IP")
+
+unset NOIP_USER NOIP_PASS
+
+case "$NOIP_RESPONSE" in
+  good*|nochg*)
+    log "No-IP actualizado correctamente: $NOIP_RESPONSE"
+    ;;
+  *)
+    log "ERROR: Respuesta inesperada de No-IP: $NOIP_RESPONSE"
+    exit 1
+    ;;
+esac
+
 # Preparar directorio base del proyecto
 mkdir -p "$COMPOSE_DIR"
 chown -R ubuntu:ubuntu "$COMPOSE_DIR"
-echo "Docker aprovisionado correctamente. Bucket S3: ${aws_s3_bucket}" > "$COMPOSE_DIR/init.log"
+echo "Docker y No-IP (${noip_hostname} -> $PUBLIC_IP) aprovisionados. Bucket S3: ${aws_s3_bucket}" > "$COMPOSE_DIR/init.log"
